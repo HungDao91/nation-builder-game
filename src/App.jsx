@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 const PHASES = [
   { id: "identity", label: "Bản sắc Quốc gia", icon: "🏛️" },
@@ -9,6 +9,53 @@ const PHASES = [
   { id: "central_local", label: "Trung ương - Địa phương", icon: "🗺️" },
   { id: "review", label: "Tổng kết & Đánh giá", icon: "📊" },
 ];
+
+const DESIGN_PHASES = ["structure", "government", "executive", "legislature", "central_local"];
+
+const INDICATORS = {
+  coordination: {
+    label: "Điều phối TW",
+    fullLabel: "Năng lực điều phối trung ương",
+    desc: "Khả năng thống nhất chính sách, huy động nguồn lực và chỉ đạo toàn quốc.",
+  },
+  localAutonomy: {
+    label: "Tự chủ ĐP",
+    fullLabel: "Tự chủ địa phương",
+    desc: "Mức độ địa phương có quyền quyết định ngân sách, nhân sự và chính sách phù hợp bối cảnh.",
+  },
+  accountability: {
+    label: "Giải trình",
+    fullLabel: "Trách nhiệm giải trình",
+    desc: "Mức độ quyền lực được kiểm soát, minh bạch và chịu trách nhiệm trước người dân/cơ quan đại diện.",
+  },
+  efficiency: {
+    label: "Hiệu quả",
+    fullLabel: "Hiệu quả hành chính",
+    desc: "Tốc độ và chi phí ra quyết định, triển khai chính sách và cung cấp dịch vụ công.",
+  },
+  equity: {
+    label: "Công bằng",
+    fullLabel: "Công bằng dịch vụ công",
+    desc: "Khả năng bảo đảm tiêu chuẩn dịch vụ công tương đối đồng đều giữa các vùng.",
+  },
+  stability: {
+    label: "Ổn định",
+    fullLabel: "Ổn định chính trị - thể chế",
+    desc: "Khả năng duy trì trật tự, giảm đứt gãy chính sách và hạn chế khủng hoảng chính trị.",
+  },
+  innovation: {
+    label: "Đổi mới",
+    fullLabel: "Đổi mới chính sách",
+    desc: "Khả năng thử nghiệm chính sách, thích ứng với thay đổi và học hỏi từ địa phương/quốc tế.",
+  },
+  crisisCapacity: {
+    label: "Khủng hoảng",
+    fullLabel: "Năng lực ứng phó khủng hoảng",
+    desc: "Khả năng ra quyết định nhanh, phối hợp đa cấp và phân bổ nguồn lực khi có biến cố.",
+  },
+};
+
+const BASE_INDICATORS = Object.keys(INDICATORS).reduce((acc, key) => ({ ...acc, [key]: 50 }), {});
 
 const SCENARIOS = [
   {
@@ -62,180 +109,419 @@ const OPTIONS = {
     {
       id: "unitary",
       label: "Nhà nước đơn nhất",
-      desc: "Một hệ thống pháp luật thống nhất, quyền lực tập trung từ trung ương",
+      desc: "Một hệ thống pháp luật thống nhất, quyền lực tập trung từ trung ương.",
       examples: "Pháp, Nhật Bản, Việt Nam, Hàn Quốc",
       pros: "Thống nhất pháp luật, hiệu quả điều phối",
       cons: "Ít linh hoạt cho đặc thù địa phương",
+      effects: { coordination: 12, equity: 8, efficiency: 4, localAutonomy: -10, innovation: -4 },
     },
     {
       id: "federal",
       label: "Nhà nước liên bang",
-      desc: "Các tiểu bang/vùng có quyền tự trị nhất định, có hiến pháp riêng",
+      desc: "Các tiểu bang/vùng có quyền tự trị nhất định, có hiến pháp hoặc thẩm quyền riêng.",
       examples: "Hoa Kỳ, Đức, Brazil, Ấn Độ",
-      pros: "Linh hoạt, phù hợp đa dạng",
+      pros: "Linh hoạt, phù hợp đa dạng lãnh thổ",
       cons: "Phức tạp, có thể xung đột pháp lý",
+      effects: { localAutonomy: 15, innovation: 9, accountability: 5, coordination: -8, equity: -4 },
     },
     {
       id: "confederation",
       label: "Nhà nước liên minh",
-      desc: "Các quốc gia thành viên giữ chủ quyền cao, liên kết lỏng",
+      desc: "Các quốc gia/thành viên giữ chủ quyền cao, liên kết lỏng để phối hợp một số lĩnh vực.",
       examples: "EU (một phần), Thụy Sĩ (lịch sử)",
       pros: "Tôn trọng chủ quyền thành viên",
       cons: "Khó ra quyết định chung, thiếu ràng buộc",
+      effects: { localAutonomy: 20, innovation: 6, coordination: -18, crisisCapacity: -12, stability: -6 },
     },
   ],
   government: [
     {
       id: "presidential",
       label: "Cộng hòa Tổng thống",
-      desc: "Tổng thống vừa là nguyên thủ quốc gia vừa đứng đầu hành pháp. Tam quyền phân lập triệt để.",
+      desc: "Tổng thống vừa là nguyên thủ quốc gia vừa đứng đầu hành pháp. Tam quyền phân lập rõ.",
       examples: "Hoa Kỳ, Brazil, Hàn Quốc, Indonesia",
       pros: "Hành pháp mạnh, ổn định nhiệm kỳ",
-      cons: "Nguy cơ lạm quyền, bế tắc giữa lập pháp và hành pháp",
+      cons: "Nguy cơ lạm quyền hoặc bế tắc lập pháp - hành pháp",
+      effects: { crisisCapacity: 10, stability: 6, efficiency: 5, accountability: -4, coordination: 4 },
     },
     {
       id: "parliamentary",
       label: "Cộng hòa Đại nghị",
-      desc: "Nghị viện nắm quyền lực tối cao. Thủ tướng đứng đầu hành pháp, chịu trách nhiệm trước Nghị viện.",
+      desc: "Nghị viện giữ vai trò trung tâm. Thủ tướng đứng đầu hành pháp và chịu trách nhiệm trước Nghị viện.",
       examples: "Đức, Italia, Singapore, Ấn Độ",
-      pros: "Dân chủ, ít nguy cơ độc tài",
-      cons: "Hành pháp có thể yếu, chính phủ liên minh bất ổn",
+      pros: "Dễ kiểm soát chính phủ, ít nguy cơ độc tài",
+      cons: "Hành pháp có thể yếu nếu chính phủ liên minh bất ổn",
+      effects: { accountability: 12, equity: 4, innovation: 3, crisisCapacity: -5, stability: -2 },
     },
     {
       id: "semi_presidential",
       label: "Cộng hòa Lưỡng tính",
       desc: "Hành pháp hai đầu: Tổng thống và Thủ tướng cùng chia sẻ quyền lực hành pháp.",
       examples: "Pháp, Phần Lan, Bồ Đào Nha",
-      pros: "Cân bằng quyền lực, hạn chế độc tài",
-      cons: "Xung đột giữa TT và TTg khi khác đảng (cohabitation)",
+      pros: "Cân bằng quyền lực và vẫn giữ hành pháp tương đối mạnh",
+      cons: "Có thể xung đột khi Tổng thống và đa số nghị viện khác phe",
+      effects: { crisisCapacity: 6, accountability: 5, stability: 2, efficiency: -2 },
     },
     {
       id: "socialist",
       label: "Cộng hòa XHCN",
-      desc: "Đảng lãnh đạo toàn diện, quyền lực thống nhất, không tam quyền phân lập.",
+      desc: "Đảng lãnh đạo toàn diện, quyền lực nhà nước thống nhất, không tổ chức theo tam quyền phân lập.",
       examples: "Việt Nam, Trung Quốc, Cuba",
       pros: "Ổn định chính trị, tập trung nguồn lực",
-      cons: "Hạn chế đa nguyên chính trị",
+      cons: "Hạn chế đa nguyên và phụ thuộc nhiều vào cơ chế kiểm soát nội bộ",
+      effects: { stability: 12, coordination: 10, crisisCapacity: 6, accountability: -8, localAutonomy: -5 },
     },
   ],
   executive: [
     {
       id: "strong_president",
       label: "Tổng thống mạnh",
-      desc: "Tổng thống nắm toàn quyền hành pháp, bổ nhiệm nội các, không cần tín nhiệm của nghị viện",
+      desc: "Tổng thống nắm quyền hành pháp, bổ nhiệm nội các, không cần tín nhiệm thường xuyên của nghị viện.",
+      effects: { efficiency: 10, crisisCapacity: 10, coordination: 5, accountability: -6 },
     },
     {
       id: "pm_led",
       label: "Thủ tướng điều hành",
-      desc: "Thủ tướng là người đứng đầu hành pháp thực quyền, nguyên thủ quốc gia mang tính biểu tượng",
+      desc: "Thủ tướng là người đứng đầu hành pháp thực quyền; nguyên thủ quốc gia chủ yếu mang tính biểu tượng.",
+      effects: { accountability: 8, efficiency: 4, stability: 3, crisisCapacity: -3 },
     },
     {
       id: "dual_executive",
       label: "Hành pháp hai đầu",
-      desc: "Tổng thống hoạch định chính sách, Thủ tướng tổ chức thực thi, chia sẻ quyền lực",
+      desc: "Tổng thống hoạch định chính sách, Thủ tướng tổ chức thực thi và chịu trách nhiệm trước nghị viện.",
+      effects: { accountability: 5, crisisCapacity: 4, coordination: -2, efficiency: -3 },
     },
     {
       id: "collective",
       label: "Hành pháp tập thể",
-      desc: "Chính phủ hoạt động theo nguyên tắc tập thể lãnh đạo, cá nhân phụ trách",
+      desc: "Chính phủ hoạt động theo nguyên tắc tập thể lãnh đạo, cá nhân phụ trách.",
+      effects: { stability: 6, accountability: 4, efficiency: -6, crisisCapacity: -3 },
     },
   ],
   legislature: [
     {
       id: "unicameral",
       label: "Đơn viện",
-      desc: "Một viện duy nhất, quy trình lập pháp nhanh gọn",
+      desc: "Một viện duy nhất, quy trình lập pháp nhanh gọn.",
       examples: "Việt Nam, Hàn Quốc, Singapore",
+      effects: { efficiency: 8, crisisCapacity: 4, accountability: -3, localAutonomy: -2 },
     },
     {
       id: "bicameral",
       label: "Lưỡng viện",
-      desc: "Thượng viện + Hạ viện, kiểm soát chéo trong lập pháp",
+      desc: "Thượng viện + Hạ viện, tăng kiểm soát chéo và đại diện lãnh thổ/nhóm xã hội.",
       examples: "Hoa Kỳ, Đức, Nhật Bản, Pháp",
+      effects: { accountability: 10, localAutonomy: 6, equity: 3, efficiency: -6 },
     },
   ],
   central_local: [
     {
       id: "centralized",
       label: "Tập quyền",
-      desc: "Trung ương quyết định hầu hết, địa phương thực thi theo chỉ đạo",
+      desc: "Trung ương quyết định hầu hết, địa phương chủ yếu thực thi theo chỉ đạo.",
+      effects: { coordination: 18, equity: 8, crisisCapacity: 8, localAutonomy: -18, innovation: -8 },
     },
     {
       id: "decentralized",
       label: "Phân quyền",
-      desc: "Địa phương có quyền tự chủ cao về ngân sách, nhân sự, chính sách",
+      desc: "Địa phương có quyền tự chủ cao về ngân sách, nhân sự và chính sách.",
+      effects: { localAutonomy: 18, innovation: 12, accountability: 6, coordination: -10, equity: -6 },
     },
     {
       id: "deconcentrated",
       label: "Tản quyền",
-      desc: "Trung ương đặt cơ quan đại diện tại địa phương để thực thi",
+      desc: "Trung ương đặt cơ quan đại diện tại địa phương để thực thi thẩm quyền của mình.",
+      effects: { coordination: 10, crisisCapacity: 6, efficiency: 3, localAutonomy: -8, accountability: -2 },
     },
     {
       id: "mixed",
       label: "Kết hợp",
-      desc: "Kết hợp linh hoạt giữa tập quyền và phân quyền theo lĩnh vực",
+      desc: "Kết hợp linh hoạt giữa tập quyền, tản quyền và phân quyền theo từng lĩnh vực.",
+      effects: { coordination: 6, localAutonomy: 6, innovation: 6, equity: 4, efficiency: 2 },
     },
   ],
 };
 
 const SCORING = {
+  completion: {
+    label: "Hoàn thành thiết kế",
+    max: 15,
+    desc: "Đặt tên quốc gia và hoàn thành đầy đủ 5 lựa chọn thiết chế.",
+  },
   consistency: {
     label: "Tính nhất quán",
     max: 25,
-    desc: "Các lựa chọn có logic, phù hợp với nhau",
+    desc: "Các lựa chọn có logic và phù hợp với nhau.",
   },
   justification: {
     label: "Lập luận",
     max: 25,
-    desc: "Giải thích hợp lý, có cơ sở lý thuyết",
+    desc: "Giải thích hợp lý, có cơ sở lý thuyết hoặc kinh nghiệm quốc tế.",
   },
   scenario: {
     label: "Xử lý tình huống",
     max: 25,
-    desc: "Vận dụng mô hình để giải quyết vấn đề thực tế",
+    desc: "Vận dụng mô hình để giải quyết vấn đề thực tế.",
   },
-  creativity: {
-    label: "Sáng tạo & Phản biện",
-    max: 25,
-    desc: "Nhận diện ưu/nhược điểm, đề xuất cải tiến",
+  reflection: {
+    label: "Phản biện mô hình",
+    max: 10,
+    desc: "Nhận diện điểm mạnh, rủi ro và hướng cải cách.",
   },
 };
 
-// Consistency check logic
+function clamp(value, min = 0, max = 100) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function getOption(key, id) {
+  return OPTIONS[key]?.find((option) => option.id === id);
+}
+
+function getLabel(key, id) {
+  return getOption(key, id)?.label || "Chưa chọn";
+}
+
+function getTextStrength(text = "") {
+  const length = text.trim().length;
+  if (length >= 220) return 1;
+  if (length >= 120) return 0.8;
+  if (length >= 60) return 0.55;
+  if (length >= 20) return 0.3;
+  return 0;
+}
+
+function getScenarioInsight(scenarioId, choices) {
+  const centralLocal = choices.central_local;
+  const government = choices.government;
+  const executive = choices.executive;
+
+  if (!scenarioId) return "Chưa chọn tình huống kiểm tra.";
+
+  if (scenarioId === "economic_crisis") {
+    if (government === "presidential" || executive === "strong_president") {
+      return "Mô hình có lợi thế ra quyết định nhanh về gói kích cầu, nhưng cần cơ chế kiểm soát ngân sách để tránh lạm quyền.";
+    }
+    if (government === "parliamentary") {
+      return "Mô hình có lợi thế về giám sát ngân sách, nhưng tốc độ thông qua chính sách phụ thuộc vào đa số nghị viện/liên minh cầm quyền.";
+    }
+    return "Cần làm rõ cơ quan phê chuẩn ngân sách khẩn cấp và cơ chế phối hợp giữa hành pháp - lập pháp.";
+  }
+
+  if (scenarioId === "natural_disaster") {
+    if (centralLocal === "centralized" || centralLocal === "deconcentrated") {
+      return "Mô hình có ưu thế huy động nguồn lực toàn quốc, nhưng cần kênh phản hồi từ địa phương để tránh phân bổ cứng nhắc.";
+    }
+    if (centralLocal === "decentralized") {
+      return "Địa phương có thể phản ứng nhanh tại chỗ, nhưng trung ương phải có cơ chế điều phối để tránh chênh lệch năng lực giữa vùng.";
+    }
+    return "Mô hình kết hợp phù hợp nếu phân định rõ trung ương điều phối chiến lược, địa phương tổ chức cứu trợ tại chỗ.";
+  }
+
+  if (scenarioId === "separatism") {
+    if (choices.structure === "federal" || centralLocal === "decentralized") {
+      return "Tự chủ địa phương có thể giảm bất mãn, nhưng cũng cần cơ chế hiến định rõ về chủ quyền, tài nguyên và quyền ly khai.";
+    }
+    return "Mô hình tập trung giúp bảo vệ thống nhất lãnh thổ, nhưng cần cơ chế đại diện và chia sẻ lợi ích để giảm bất mãn vùng.";
+  }
+
+  if (scenarioId === "digital_transform") {
+    if (centralLocal === "centralized") {
+      return "Trung ương có thể áp đặt chuẩn dữ liệu thống nhất, nhưng cần trao quyền thực thi cho địa phương để tránh chuyển đổi số hình thức.";
+    }
+    if (centralLocal === "decentralized") {
+      return "Địa phương dễ thử nghiệm sáng kiến số, nhưng cần chuẩn liên thông dữ liệu toàn quốc và cơ chế bảo vệ quyền riêng tư.";
+    }
+    return "Cần kết hợp chuẩn quốc gia, đầu mối điều phối trung ương và quyền thử nghiệm ở địa phương.";
+  }
+
+  return "Cần phân tích rõ thẩm quyền, quy trình ra quyết định và cơ chế kiểm soát quyền lực trong tình huống đã chọn.";
+}
+
 function checkConsistency(choices) {
   const issues = [];
   const warnings = [];
   const good = [];
 
   if (choices.structure === "federal" && choices.central_local === "centralized") {
-    issues.push("Nhà nước liên bang thường không đi với mô hình tập quyền hoàn toàn. Cần giải thích tại sao bạn chọn sự kết hợp này.");
+    issues.push("Nhà nước liên bang thường không đi với mô hình tập quyền hoàn toàn. Cần giải thích rất kỹ nếu giữ lựa chọn này.");
+  }
+  if (choices.structure === "confederation" && choices.central_local === "centralized") {
+    issues.push("Nhà nước liên minh dựa trên chủ quyền cao của thành viên, nên mâu thuẫn mạnh với tập quyền.");
   }
   if (choices.structure === "unitary" && choices.central_local === "decentralized") {
-    warnings.push("Nhà nước đơn nhất với phân quyền mạnh là khả thi (VD: Nhật Bản) nhưng cần cơ chế giám sát rõ ràng.");
+    warnings.push("Nhà nước đơn nhất với phân quyền mạnh là khả thi, nhưng cần cơ chế giám sát pháp luật và tiêu chuẩn dịch vụ công rõ ràng.");
   }
   if (choices.government === "presidential" && choices.executive === "pm_led") {
-    issues.push("Cộng hòa Tổng thống thường không có Thủ tướng điều hành. Hãy cân nhắc lại sự lựa chọn.");
+    issues.push("Cộng hòa Tổng thống thường không có Thủ tướng điều hành thực quyền. Hãy cân nhắc lại sự lựa chọn.");
   }
   if (choices.government === "parliamentary" && choices.executive === "strong_president") {
     issues.push("Cộng hòa Đại nghị không phù hợp với Tổng thống mạnh. Nguyên thủ quốc gia thường mang tính biểu tượng.");
   }
+  if (choices.government === "semi_presidential" && choices.executive !== "dual_executive") {
+    warnings.push("Cộng hòa lưỡng tính thường cần hành pháp hai đầu. Nếu chọn mô hình khác, cần giải thích quan hệ Tổng thống - Thủ tướng.");
+  }
+  if (choices.government === "socialist" && choices.executive === "strong_president") {
+    warnings.push("Mô hình XHCN thường nhấn mạnh quyền lực thống nhất/tập thể hơn là Tổng thống mạnh kiểu tổng thống chế.");
+  }
   if (choices.government === "semi_presidential" && choices.executive === "dual_executive") {
-    good.push("Lựa chọn nhất quán! Cộng hòa lưỡng tính đi với hành pháp hai đầu là mô hình Pháp điển hình.");
+    good.push("Lựa chọn nhất quán: cộng hòa lưỡng tính đi với hành pháp hai đầu, tương tự mô hình Pháp.");
   }
   if (choices.government === "parliamentary" && choices.executive === "pm_led") {
-    good.push("Phù hợp! Mô hình đại nghị với Thủ tướng điều hành là sự kết hợp chuẩn mực.");
+    good.push("Phù hợp: mô hình đại nghị với Thủ tướng điều hành là sự kết hợp chuẩn mực.");
   }
   if (choices.government === "presidential" && choices.executive === "strong_president") {
-    good.push("Nhất quán! Tổng thống mạnh trong mô hình cộng hòa tổng thống, giống Hoa Kỳ.");
+    good.push("Nhất quán: Tổng thống mạnh phù hợp với mô hình cộng hòa tổng thống.");
   }
   if (choices.structure === "federal" && choices.legislature === "bicameral") {
-    good.push("Hợp lý! Nhà nước liên bang thường có lưỡng viện để đại diện cho các bang/vùng.");
+    good.push("Hợp lý: nhà nước liên bang thường có lưỡng viện để đại diện cho các bang/vùng.");
   }
   if (choices.structure === "federal" && choices.legislature === "unicameral") {
-    warnings.push("Nhà nước liên bang hiếm khi chỉ có đơn viện. Thượng viện thường cần thiết để đại diện cho các đơn vị thành viên.");
+    warnings.push("Nhà nước liên bang hiếm khi chỉ có đơn viện. Thượng viện thường cần thiết để đại diện cho đơn vị thành viên.");
+  }
+  if (choices.central_local === "decentralized" && choices.legislature === "bicameral") {
+    good.push("Phù hợp: phân quyền mạnh đi cùng lưỡng viện có thể tăng đại diện lãnh thổ và kiểm soát chính sách.");
   }
 
   return { issues, warnings, good };
+}
+
+function calculateIndicators(choices) {
+  const result = { ...BASE_INDICATORS };
+  DESIGN_PHASES.forEach((phase) => {
+    const option = getOption(phase, choices[phase]);
+    if (!option?.effects) return;
+    Object.entries(option.effects).forEach(([key, value]) => {
+      result[key] = clamp((result[key] || 50) + value);
+    });
+  });
+  return result;
+}
+
+function calculateScore({ choices, nationName, justifications, selectedScenario, scenarioResponses }) {
+  const consistency = checkConsistency(choices);
+  const completedChoices = DESIGN_PHASES.filter((phase) => choices[phase]).length;
+  const completionScore = Math.round((nationName.trim() ? 5 : 0) + (completedChoices / DESIGN_PHASES.length) * 10);
+
+  const consistencyRaw = 18 + consistency.good.length * 2 - consistency.warnings.length * 2 - consistency.issues.length * 6;
+  const consistencyScore = completedChoices < DESIGN_PHASES.length ? Math.round((completedChoices / DESIGN_PHASES.length) * 15) : clamp(consistencyRaw, 0, SCORING.consistency.max);
+
+  const justificationStrength = DESIGN_PHASES.reduce((sum, phase) => sum + getTextStrength(justifications[phase]), 0) / DESIGN_PHASES.length;
+  const justificationScore = Math.round(justificationStrength * SCORING.justification.max);
+
+  const scenarioText = selectedScenario ? scenarioResponses[selectedScenario] || "" : "";
+  const scenarioStrength = getTextStrength(scenarioText);
+  const scenarioScore = Math.round(scenarioStrength * SCORING.scenario.max);
+
+  const reflectionScore = clamp(
+    Math.round(
+      Math.min(consistency.good.length, 3) * 1.5 +
+        Math.min(consistency.warnings.length + consistency.issues.length, 3) * 1.5 +
+        justificationStrength * 4
+    ),
+    0,
+    SCORING.reflection.max
+  );
+
+  const total = completionScore + consistencyScore + justificationScore + scenarioScore + reflectionScore;
+
+  return {
+    total,
+    completion: completionScore,
+    consistency: consistencyScore,
+    justification: justificationScore,
+    scenario: scenarioScore,
+    reflection: reflectionScore,
+  };
+}
+
+function getPerformanceLevel(total) {
+  if (total >= 85) return { label: "Xuất sắc", color: "#0e6251", bg: "#e8f8f5" };
+  if (total >= 70) return { label: "Tốt", color: "#1a5276", bg: "#eaf2f8" };
+  if (total >= 50) return { label: "Đạt yêu cầu", color: "#7d6608", bg: "#fef9e7" };
+  return { label: "Cần hoàn thiện", color: "#922b21", bg: "#fdedec" };
+}
+
+function getIndicatorComment(indicators) {
+  const entries = Object.entries(indicators).sort((a, b) => b[1] - a[1]);
+  const top = entries.slice(0, 2).map(([key]) => INDICATORS[key].fullLabel.toLowerCase()).join(" và ");
+  const low = entries.slice(-2).map(([key]) => INDICATORS[key].fullLabel.toLowerCase()).join(" và ");
+  return `Mô hình này nổi bật về ${top}, nhưng cần chú ý cải thiện ${low}.`;
+}
+
+function generateReport({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses }) {
+  const selectedScenarioObj = SCENARIOS.find((s) => s.id === selectedScenario);
+  const indicatorLines = Object.entries(indicators)
+    .map(([key, value]) => `- ${INDICATORS[key].fullLabel}: ${value}/100`)
+    .join("\n");
+
+  const modelLines = DESIGN_PHASES
+    .map((phase) => `- ${getPhaseShortLabel(phase)}: ${getLabel(phase, choices[phase])}`)
+    .join("\n");
+
+  const justificationLines = DESIGN_PHASES
+    .map((phase) => `- ${getPhaseShortLabel(phase)}: ${justifications[phase]?.trim() || "Chưa có giải thích."}`)
+    .join("\n");
+
+  const feedbackLines = [
+    ...consistency.good.map((item) => `- Điểm mạnh: ${item}`),
+    ...consistency.warnings.map((item) => `- Cảnh báo: ${item}`),
+    ...consistency.issues.map((item) => `- Vấn đề cần sửa: ${item}`),
+  ].join("\n") || "- Chưa có phản hồi vì thiết kế chưa đủ dữ liệu.";
+
+  return `BÁO CÁO THIẾT KẾ QUỐC GIA - NATIONAL BUILDER\n\n1. Tên quốc gia\n${nationName || "Chưa đặt tên"}\n\n2. Hồ sơ thiết chế\n${modelLines}\n\n3. Chỉ số vận hành\n${indicatorLines}\n\nNhận xét tổng hợp: ${getIndicatorComment(indicators)}\n\n4. Điểm tự động\n- Tổng điểm: ${score.total}/100\n- Hoàn thành thiết kế: ${score.completion}/${SCORING.completion.max}\n- Tính nhất quán: ${score.consistency}/${SCORING.consistency.max}\n- Lập luận: ${score.justification}/${SCORING.justification.max}\n- Xử lý tình huống: ${score.scenario}/${SCORING.scenario.max}\n- Phản biện mô hình: ${score.reflection}/${SCORING.reflection.max}\n\n5. Giải thích lựa chọn của nhóm\n${justificationLines}\n\n6. Kiểm tra tính nhất quán\n${feedbackLines}\n\n7. Tình huống kiểm tra\n${selectedScenarioObj ? `${selectedScenarioObj.icon} ${selectedScenarioObj.title}: ${selectedScenarioObj.description}` : "Chưa chọn tình huống."}\n\nPhân tích của nhóm:\n${selectedScenario ? scenarioResponses[selectedScenario]?.trim() || "Chưa có phân tích tình huống." : "Chưa có phân tích tình huống."}\n\nGợi ý phản biện:\n${selectedScenario ? getScenarioInsight(selectedScenario, choices) : "Hãy chọn một tình huống để kiểm tra khả năng vận hành của mô hình."}`;
+}
+
+function getPhaseShortLabel(key) {
+  const labels = {
+    structure: "Cấu trúc nhà nước",
+    government: "Chính thể",
+    executive: "Hành pháp",
+    legislature: "Lập pháp",
+    central_local: "Quan hệ TW-ĐP",
+  };
+  return labels[key] || key;
+}
+
+function ProgressBar({ value, max = 100, height = 8 }) {
+  const pct = clamp((value / max) * 100);
+  return (
+    <div style={{ width: "100%", height, background: "#edf2f4", borderRadius: 999, overflow: "hidden" }}>
+      <div
+        style={{
+          width: `${pct}%`,
+          height: "100%",
+          background: "linear-gradient(90deg, #1a5276, #2e86c1)",
+          borderRadius: 999,
+          transition: "width 0.25s ease",
+        }}
+      />
+    </div>
+  );
+}
+
+function IndicatorPanel({ indicators, compact = false }) {
+  return (
+    <div style={{ background: "#fff", borderRadius: "12px", padding: compact ? "14px" : "18px", border: "1px solid #e0e0e0" }}>
+      <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 12px", fontSize: "16px" }}>
+        📈 Chỉ số vận hành quốc gia
+      </h4>
+      <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "1fr 1fr", gap: "12px" }}>
+        {Object.entries(INDICATORS).map(([key, meta]) => (
+          <div key={key} style={{ background: "#f8f9fa", borderRadius: "10px", padding: "10px 12px" }} title={meta.desc}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", marginBottom: "6px", alignItems: "center" }}>
+              <div style={{ fontSize: "13px", fontWeight: 700, color: "#333" }}>{meta.label}</div>
+              <div style={{ fontSize: "13px", fontWeight: 800, color: "#1a5276" }}>{indicators[key]}/100</div>
+            </div>
+            <ProgressBar value={indicators[key]} />
+          </div>
+        ))}
+      </div>
+      <div style={{ marginTop: "12px", fontSize: "12px", color: "#666", lineHeight: 1.55 }}>
+        Chỉ số bắt đầu từ 50 và thay đổi theo từng lựa chọn. Đây không phải điểm đúng/sai tuyệt đối, mà là mô phỏng đánh đổi thể chế.
+      </div>
+    </div>
+  );
 }
 
 function OptionCard({ option, selected, onSelect, compact }) {
@@ -247,46 +533,46 @@ function OptionCard({ option, selected, onSelect, compact }) {
         padding: compact ? "14px 16px" : "18px 20px",
         borderRadius: "12px",
         border: isSelected ? "2px solid #1a5276" : "2px solid #e0e0e0",
-        background: isSelected
-          ? "linear-gradient(135deg, #1a5276 0%, #2e86c1 100%)"
-          : "#fff",
+        background: isSelected ? "linear-gradient(135deg, #1a5276 0%, #2e86c1 100%)" : "#fff",
         color: isSelected ? "#fff" : "#333",
         cursor: "pointer",
         transition: "all 0.25s ease",
         boxShadow: isSelected ? "0 4px 16px rgba(26,82,118,0.25)" : "0 1px 4px rgba(0,0,0,0.06)",
       }}
     >
-      <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "4px", fontFamily: "'Noto Serif', Georgia, serif" }}>
-        {option.label}
-      </div>
+      <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "4px", fontFamily: "'Noto Serif', Georgia, serif" }}>{option.label}</div>
       <div style={{ fontSize: "13px", opacity: 0.85, lineHeight: 1.5 }}>{option.desc}</div>
       {option.examples && (
-        <div
-          style={{
-            fontSize: "12px",
-            marginTop: "6px",
-            opacity: 0.7,
-            fontStyle: "italic",
-          }}
-        >
-          VD: {option.examples}
-        </div>
+        <div style={{ fontSize: "12px", marginTop: "6px", opacity: 0.7, fontStyle: "italic" }}>VD: {option.examples}</div>
       )}
       {option.pros && isSelected && (
-        <div style={{ marginTop: "8px", fontSize: "12px", display: "flex", gap: "12px", flexWrap: "wrap" }}>
-          <span style={{ background: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: "4px" }}>
-            ✓ {option.pros}
-          </span>
-          <span style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: "4px" }}>
-            ✗ {option.cons}
-          </span>
+        <div style={{ marginTop: "8px", fontSize: "12px", display: "flex", gap: "8px", flexWrap: "wrap" }}>
+          <span style={{ background: "rgba(255,255,255,0.2)", padding: "2px 8px", borderRadius: "4px" }}>✓ {option.pros}</span>
+          <span style={{ background: "rgba(255,255,255,0.15)", padding: "2px 8px", borderRadius: "4px" }}>✗ {option.cons}</span>
+        </div>
+      )}
+      {isSelected && option.effects && (
+        <div style={{ marginTop: "10px", display: "flex", gap: "6px", flexWrap: "wrap" }}>
+          {Object.entries(option.effects).map(([key, value]) => (
+            <span
+              key={key}
+              style={{
+                fontSize: "11px",
+                background: "rgba(255,255,255,0.18)",
+                padding: "2px 7px",
+                borderRadius: "999px",
+              }}
+            >
+              {value > 0 ? "+" : ""}{value} {INDICATORS[key]?.label}
+            </span>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function PhaseContent({ phase, choices, setChoices, nationName, setNationName, justifications, setJustifications }) {
+function PhaseContent({ phase, choices, setChoices, nationName, setNationName, justifications, setJustifications, indicators }) {
   const updateChoice = (key, value) => setChoices((prev) => ({ ...prev, [key]: value }));
   const updateJustification = (key, value) => setJustifications((prev) => ({ ...prev, [key]: value }));
 
@@ -325,9 +611,10 @@ function PhaseContent({ phase, choices, setChoices, nationName, setNationName, j
         <div style={{ background: "#fef9e7", borderRadius: "10px", padding: "16px", border: "1px solid #f9e79f" }}>
           <div style={{ fontWeight: 700, marginBottom: "6px", color: "#7d6608", fontSize: "14px" }}>💡 Gợi ý</div>
           <div style={{ fontSize: "13px", color: "#7d6608", lineHeight: 1.6 }}>
-            Tên quốc gia thường phản ánh hình thức chính thể. Ví dụ: "Cộng hòa Liên bang X", "Vương quốc Y", "Nhà nước XHCN Z". Bạn có thể quay lại đổi tên sau khi đã chọn xong mô hình.
+            Tên quốc gia thường phản ánh hình thức chính thể. Ví dụ: “Cộng hòa Liên bang X”, “Vương quốc Y”, “Nhà nước XHCN Z”.
           </div>
         </div>
+        <IndicatorPanel indicators={indicators} compact />
       </div>
     );
   }
@@ -346,10 +633,10 @@ function PhaseContent({ phase, choices, setChoices, nationName, setNationName, j
 
   const phaseDescriptions = {
     structure: "Cấu trúc nhà nước quyết định cách thức tổ chức lãnh thổ và phân chia quyền lực giữa các đơn vị hành chính.",
-    government: "Hình thức chính thể xác định mối quan hệ giữa các nhánh quyền lực: lập pháp, hành pháp và tư pháp.",
+    government: "Hình thức chính thể xác định mối quan hệ giữa lập pháp, hành pháp và tư pháp.",
     executive: "Mô hình hành pháp xác định ai nắm quyền điều hành và cách thức ra quyết định chính sách.",
-    legislature: "Cơ cấu lập pháp ảnh hưởng đến quy trình làm luật và cơ chế đại diện của người dân.",
-    central_local: "Mối quan hệ trung ương - địa phương quyết định mức độ tự chủ của các cấp chính quyền.",
+    legislature: "Cơ cấu lập pháp ảnh hưởng đến quy trình làm luật và cơ chế đại diện của người dân/vùng lãnh thổ.",
+    central_local: "Mối quan hệ trung ương - địa phương quyết định mức độ tự chủ, điều phối và trách nhiệm giải trình.",
   };
 
   return (
@@ -366,7 +653,7 @@ function PhaseContent({ phase, choices, setChoices, nationName, setNationName, j
             key={opt.id}
             option={opt}
             selected={choices[optionKey]}
-            onSelect={(v) => updateChoice(optionKey, v)}
+            onSelect={(value) => updateChoice(optionKey, value)}
             compact={options.length > 3}
           />
         ))}
@@ -374,15 +661,15 @@ function PhaseContent({ phase, choices, setChoices, nationName, setNationName, j
       {choices[optionKey] && (
         <div style={{ marginTop: "4px" }}>
           <label style={{ fontWeight: 600, fontSize: "14px", color: "#1a5276", display: "block", marginBottom: "6px" }}>
-            📝 Giải thích lựa chọn (bắt buộc cho đánh giá)
+            📝 Giải thích lựa chọn
           </label>
           <textarea
             value={justifications[optionKey] || ""}
             onChange={(e) => updateJustification(optionKey, e.target.value)}
-            placeholder="Tại sao bạn chọn mô hình này? Dựa trên lý thuyết hay kinh nghiệm quốc tế nào?"
+            placeholder="Tại sao bạn chọn mô hình này? Dựa trên lý thuyết nào, ví dụ quốc gia nào, và đánh đổi chính là gì?"
             style={{
               width: "100%",
-              minHeight: "80px",
+              minHeight: "90px",
               padding: "12px",
               border: "2px solid #d5dbdb",
               borderRadius: "10px",
@@ -398,153 +685,141 @@ function PhaseContent({ phase, choices, setChoices, nationName, setNationName, j
           />
         </div>
       )}
+      <IndicatorPanel indicators={indicators} compact />
     </div>
   );
 }
 
-function ReviewPanel({ choices, nationName, justifications }) {
+function ReviewPanel({ choices, nationName, justifications, selectedScenario, setSelectedScenario, scenarioResponses, setScenarioResponses, indicators }) {
   const consistency = checkConsistency(choices);
-  const allPhases = ["structure", "government", "executive", "legislature", "central_local"];
-  const completed = allPhases.filter((p) => choices[p]).length;
-  const hasJustifications = allPhases.filter((p) => justifications[p] && justifications[p].trim().length > 20).length;
+  const score = calculateScore({ choices, nationName, justifications, selectedScenario, scenarioResponses });
+  const level = getPerformanceLevel(score.total);
+  const completed = DESIGN_PHASES.filter((phase) => choices[phase]).length;
+  const hasJustifications = DESIGN_PHASES.filter((phase) => getTextStrength(justifications[phase]) >= 0.3).length;
+  const reportText = generateReport({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses });
 
-  const getLabel = (key, id) => {
-    const opt = OPTIONS[key]?.find((o) => o.id === id);
-    return opt?.label || "Chưa chọn";
+  const copyReport = async () => {
+    try {
+      await navigator.clipboard.writeText(reportText);
+      alert("Đã copy báo cáo vào clipboard.");
+    } catch (error) {
+      alert("Không thể copy tự động. Bạn có thể bôi đen phần báo cáo và copy thủ công.");
+    }
   };
-
-  const [selectedScenario, setSelectedScenario] = useState(null);
-  const [scenarioResponse, setScenarioResponse] = useState("");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
-      {/* Nation Summary */}
-      <div
-        style={{
-          background: "linear-gradient(135deg, #1a5276 0%, #2e86c1 100%)",
-          borderRadius: "14px",
-          padding: "24px",
-          color: "#fff",
-        }}
-      >
-        <div style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "2px", opacity: 0.7, marginBottom: "4px" }}>
-          Hồ sơ Quốc gia
-        </div>
+      <div style={{ background: "linear-gradient(135deg, #1a5276 0%, #2e86c1 100%)", borderRadius: "14px", padding: "24px", color: "#fff" }}>
+        <div style={{ fontSize: "12px", textTransform: "uppercase", letterSpacing: "2px", opacity: 0.7, marginBottom: "4px" }}>Hồ sơ Quốc gia</div>
         <div style={{ fontSize: "26px", fontWeight: 700, fontFamily: "'Noto Serif', Georgia, serif", marginBottom: "16px" }}>
           {nationName || "Chưa đặt tên"}
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
-          {allPhases.map((key) => (
+          {DESIGN_PHASES.map((key) => (
             <div key={key} style={{ background: "rgba(255,255,255,0.12)", borderRadius: "8px", padding: "10px 12px" }}>
-              <div style={{ fontSize: "11px", opacity: 0.7, textTransform: "uppercase" }}>
-                {key === "structure" ? "Cấu trúc" : key === "government" ? "Chính thể" : key === "executive" ? "Hành pháp" : key === "legislature" ? "Lập pháp" : "TW-ĐP"}
-              </div>
-              <div style={{ fontSize: "14px", fontWeight: 600, marginTop: "2px" }}>
-                {choices[key] ? getLabel(key, choices[key]) : "—"}
-              </div>
+              <div style={{ fontSize: "11px", opacity: 0.7, textTransform: "uppercase" }}>{getPhaseShortLabel(key)}</div>
+              <div style={{ fontSize: "14px", fontWeight: 600, marginTop: "2px" }}>{choices[key] ? getLabel(key, choices[key]) : "—"}</div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Consistency Check */}
+      <div style={{ background: level.bg, borderRadius: "14px", padding: "18px", border: `1px solid ${level.color}33` }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "14px" }}>
+          <div>
+            <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: level.color, margin: "0 0 4px", fontSize: "17px" }}>🏅 Điểm tự động</h4>
+            <div style={{ fontSize: "13px", color: level.color }}>Mức đánh giá: <strong>{level.label}</strong></div>
+          </div>
+          <div style={{ fontSize: "34px", fontWeight: 900, color: level.color }}>{score.total}/100</div>
+        </div>
+        <div style={{ marginTop: "12px" }}><ProgressBar value={score.total} height={10} /></div>
+      </div>
+
+      <IndicatorPanel indicators={indicators} />
+
       <div style={{ background: "#fff", borderRadius: "12px", padding: "18px", border: "1px solid #e0e0e0" }}>
-        <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 12px", fontSize: "16px" }}>
-          🔍 Kiểm tra tính nhất quán
-        </h4>
-        {consistency.good.map((g, i) => (
-          <div key={i} style={{ background: "#e8f8f5", borderRadius: "8px", padding: "10px 14px", marginBottom: "8px", fontSize: "13px", color: "#0e6251" }}>
-            ✅ {g}
-          </div>
+        <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 12px", fontSize: "16px" }}>🔍 Kiểm tra tính nhất quán</h4>
+        {consistency.good.map((item, i) => (
+          <div key={`g-${i}`} style={{ background: "#e8f8f5", borderRadius: "8px", padding: "10px 14px", marginBottom: "8px", fontSize: "13px", color: "#0e6251" }}>✅ {item}</div>
         ))}
-        {consistency.warnings.map((w, i) => (
-          <div key={i} style={{ background: "#fef9e7", borderRadius: "8px", padding: "10px 14px", marginBottom: "8px", fontSize: "13px", color: "#7d6608" }}>
-            ⚠️ {w}
-          </div>
+        {consistency.warnings.map((item, i) => (
+          <div key={`w-${i}`} style={{ background: "#fef9e7", borderRadius: "8px", padding: "10px 14px", marginBottom: "8px", fontSize: "13px", color: "#7d6608" }}>⚠️ {item}</div>
         ))}
-        {consistency.issues.map((issue, i) => (
-          <div key={i} style={{ background: "#fdedec", borderRadius: "8px", padding: "10px 14px", marginBottom: "8px", fontSize: "13px", color: "#922b21" }}>
-            ❌ {issue}
-          </div>
+        {consistency.issues.map((item, i) => (
+          <div key={`i-${i}`} style={{ background: "#fdedec", borderRadius: "8px", padding: "10px 14px", marginBottom: "8px", fontSize: "13px", color: "#922b21" }}>❌ {item}</div>
         ))}
         {consistency.good.length === 0 && consistency.warnings.length === 0 && consistency.issues.length === 0 && (
           <div style={{ fontSize: "13px", color: "#999" }}>Hãy hoàn thành các lựa chọn để xem kết quả kiểm tra.</div>
         )}
       </div>
 
-      {/* Scoring */}
       <div style={{ background: "#fff", borderRadius: "12px", padding: "18px", border: "1px solid #e0e0e0" }}>
-        <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 12px", fontSize: "16px" }}>
-          📊 Tiêu chí đánh giá (100 điểm)
-        </h4>
-        {Object.entries(SCORING).map(([key, s]) => (
-          <div key={key} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f0f0f0" }}>
-            <div>
-              <div style={{ fontWeight: 600, fontSize: "14px", color: "#333" }}>{s.label}</div>
-              <div style={{ fontSize: "12px", color: "#888" }}>{s.desc}</div>
+        <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 12px", fontSize: "16px" }}>📊 Chi tiết điểm</h4>
+        {Object.entries(SCORING).map(([key, meta]) => (
+          <div key={key} style={{ padding: "9px 0", borderBottom: "1px solid #f0f0f0" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", marginBottom: "5px" }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: "14px", color: "#333" }}>{meta.label}</div>
+                <div style={{ fontSize: "12px", color: "#888" }}>{meta.desc}</div>
+              </div>
+              <div style={{ fontWeight: 800, fontSize: "16px", color: "#1a5276", minWidth: "60px", textAlign: "right" }}>{score[key]}/{meta.max}</div>
             </div>
-            <div style={{ fontWeight: 700, fontSize: "16px", color: "#1a5276", minWidth: "50px", textAlign: "right" }}>
-              /{s.max}
-            </div>
+            <ProgressBar value={score[key]} max={meta.max} height={6} />
           </div>
         ))}
         <div style={{ marginTop: "12px", fontSize: "13px", color: "#666", lineHeight: 1.6 }}>
-          <strong>Tiến độ:</strong> {completed}/5 lựa chọn · {hasJustifications}/5 giải thích
+          <strong>Tiến độ:</strong> {completed}/5 lựa chọn · {hasJustifications}/5 giải thích · {selectedScenario ? "đã chọn tình huống" : "chưa chọn tình huống"}
         </div>
       </div>
 
-      {/* Scenario Challenge */}
       <div style={{ background: "#fff", borderRadius: "12px", padding: "18px", border: "1px solid #e0e0e0" }}>
-        <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 12px", fontSize: "16px" }}>
-          🎯 Thử thách tình huống
-        </h4>
+        <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 12px", fontSize: "16px" }}>🎯 Thử thách tình huống</h4>
         <p style={{ fontSize: "13px", color: "#666", margin: "0 0 12px" }}>
-          Chọn một kịch bản để kiểm tra xem mô hình quốc gia của bạn vận hành thế nào trong thực tế.
+          Chọn một kịch bản và phân tích cách mô hình quốc gia của bạn vận hành trong thực tế.
         </p>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
-          {SCENARIOS.map((sc) => (
+          {SCENARIOS.map((scenario) => (
             <div
-              key={sc.id}
-              onClick={() => setSelectedScenario(sc.id === selectedScenario ? null : sc.id)}
+              key={scenario.id}
+              onClick={() => setSelectedScenario(scenario.id)}
               style={{
                 padding: "12px",
                 borderRadius: "10px",
-                border: selectedScenario === sc.id ? "2px solid #1a5276" : "2px solid #e0e0e0",
-                background: selectedScenario === sc.id ? "#eaf2f8" : "#fff",
+                border: selectedScenario === scenario.id ? "2px solid #1a5276" : "2px solid #e0e0e0",
+                background: selectedScenario === scenario.id ? "#eaf2f8" : "#fff",
                 cursor: "pointer",
                 transition: "all 0.2s",
               }}
             >
-              <div style={{ fontSize: "20px", marginBottom: "4px" }}>{sc.icon}</div>
-              <div style={{ fontWeight: 600, fontSize: "13px", color: "#333" }}>{sc.title}</div>
+              <div style={{ fontSize: "20px", marginBottom: "4px" }}>{scenario.icon}</div>
+              <div style={{ fontWeight: 700, fontSize: "13px", color: "#333" }}>{scenario.title}</div>
             </div>
           ))}
         </div>
         {selectedScenario && (
           <div style={{ marginTop: "14px", background: "#f8f9fa", borderRadius: "10px", padding: "16px" }}>
             {(() => {
-              const sc = SCENARIOS.find((s) => s.id === selectedScenario);
+              const scenario = SCENARIOS.find((item) => item.id === selectedScenario);
               return (
                 <>
-                  <div style={{ fontWeight: 700, fontSize: "15px", marginBottom: "6px", color: "#1a5276" }}>
-                    {sc.icon} {sc.title}
-                  </div>
-                  <p style={{ fontSize: "13px", color: "#555", lineHeight: 1.6, margin: "0 0 12px" }}>{sc.description}</p>
+                  <div style={{ fontWeight: 800, fontSize: "15px", marginBottom: "6px", color: "#1a5276" }}>{scenario.icon} {scenario.title}</div>
+                  <p style={{ fontSize: "13px", color: "#555", lineHeight: 1.6, margin: "0 0 12px" }}>{scenario.description}</p>
                   <div style={{ fontSize: "13px", color: "#333", lineHeight: 1.6 }}>
                     <strong>Câu hỏi cần trả lời:</strong>
-                    {sc.questions.map((q, i) => (
-                      <div key={i} style={{ padding: "6px 0 6px 16px", borderLeft: "3px solid #2e86c1", marginTop: "8px", marginLeft: "4px" }}>
-                        {i + 1}. {q}
-                      </div>
+                    {scenario.questions.map((question, i) => (
+                      <div key={i} style={{ padding: "6px 0 6px 16px", borderLeft: "3px solid #2e86c1", marginTop: "8px", marginLeft: "4px" }}>{i + 1}. {question}</div>
                     ))}
                   </div>
+                  <div style={{ marginTop: "12px", background: "#eaf2f8", borderRadius: "8px", padding: "10px 12px", fontSize: "13px", color: "#1a5276", lineHeight: 1.55 }}>
+                    <strong>Gợi ý tự động:</strong> {getScenarioInsight(selectedScenario, choices)}
+                  </div>
                   <textarea
-                    value={scenarioResponse}
-                    onChange={(e) => setScenarioResponse(e.target.value)}
-                    placeholder="Phân tích cách mô hình quốc gia của bạn xử lý tình huống này..."
+                    value={scenarioResponses[selectedScenario] || ""}
+                    onChange={(e) => setScenarioResponses((prev) => ({ ...prev, [selectedScenario]: e.target.value }))}
+                    placeholder="Phân tích cách mô hình quốc gia của bạn xử lý tình huống này. Nên nêu rõ: thẩm quyền, quy trình, vai trò trung ương - địa phương, cơ chế kiểm soát quyền lực."
                     style={{
                       width: "100%",
-                      minHeight: "100px",
+                      minHeight: "120px",
                       padding: "12px",
                       border: "2px solid #d5dbdb",
                       borderRadius: "10px",
@@ -565,30 +840,120 @@ function ReviewPanel({ choices, nationName, justifications }) {
           </div>
         )}
       </div>
+
+      <div style={{ background: "#fff", borderRadius: "12px", padding: "18px", border: "1px solid #e0e0e0" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "12px" }}>
+          <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: 0, fontSize: "16px" }}>🧾 Báo cáo cuối cho sinh viên</h4>
+          <button
+            onClick={copyReport}
+            style={{
+              border: "none",
+              borderRadius: "8px",
+              background: "linear-gradient(135deg, #1a5276, #2e86c1)",
+              color: "#fff",
+              padding: "8px 12px",
+              fontSize: "13px",
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Copy báo cáo
+          </button>
+        </div>
+        <textarea
+          readOnly
+          value={reportText}
+          style={{
+            width: "100%",
+            minHeight: "360px",
+            padding: "14px",
+            border: "1px solid #d5dbdb",
+            borderRadius: "10px",
+            fontSize: "13px",
+            fontFamily: "'Consolas', 'Courier New', monospace",
+            resize: "vertical",
+            boxSizing: "border-box",
+            lineHeight: 1.5,
+            background: "#f8f9fa",
+            color: "#333",
+          }}
+        />
+      </div>
     </div>
   );
 }
 
 export default function NationBuilderSimulation() {
   const [currentPhase, setCurrentPhase] = useState(0);
-  const [choices, setChoices] = useState({});
-  const [nationName, setNationName] = useState("");
-  const [justifications, setJustifications] = useState({});
+  const [choices, setChoices] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("nationalBuilderChoices")) || {};
+    } catch {
+      return {};
+    }
+  });
+  const [nationName, setNationName] = useState(() => localStorage.getItem("nationalBuilderName") || "");
+  const [justifications, setJustifications] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("nationalBuilderJustifications")) || {};
+    } catch {
+      return {};
+    }
+  });
+  const [selectedScenario, setSelectedScenario] = useState(() => localStorage.getItem("nationalBuilderScenario") || "");
+  const [scenarioResponses, setScenarioResponses] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem("nationalBuilderScenarioResponses")) || {};
+    } catch {
+      return {};
+    }
+  });
 
   const phase = PHASES[currentPhase];
   const isReview = phase.id === "review";
+  const indicators = useMemo(() => calculateIndicators(choices), [choices]);
+
+  useEffect(() => {
+    localStorage.setItem("nationalBuilderChoices", JSON.stringify(choices));
+  }, [choices]);
+
+  useEffect(() => {
+    localStorage.setItem("nationalBuilderName", nationName);
+  }, [nationName]);
+
+  useEffect(() => {
+    localStorage.setItem("nationalBuilderJustifications", JSON.stringify(justifications));
+  }, [justifications]);
+
+  useEffect(() => {
+    localStorage.setItem("nationalBuilderScenario", selectedScenario || "");
+  }, [selectedScenario]);
+
+  useEffect(() => {
+    localStorage.setItem("nationalBuilderScenarioResponses", JSON.stringify(scenarioResponses));
+  }, [scenarioResponses]);
+
+  const resetGame = () => {
+    const confirmed = window.confirm("Bạn có chắc muốn xóa toàn bộ thiết kế và làm lại từ đầu?");
+    if (!confirmed) return;
+    setCurrentPhase(0);
+    setChoices({});
+    setNationName("");
+    setJustifications({});
+    setSelectedScenario("");
+    setScenarioResponses({});
+  };
 
   return (
     <div
       style={{
         fontFamily: "'Noto Sans', 'Segoe UI', system-ui, sans-serif",
-        maxWidth: "780px",
+        maxWidth: "860px",
         margin: "0 auto",
         minHeight: "100vh",
         background: "#f4f6f7",
       }}
     >
-      {/* Header */}
       <div
         style={{
           background: "linear-gradient(135deg, #0b2e4a 0%, #1a5276 50%, #2e86c1 100%)",
@@ -597,35 +962,32 @@ export default function NationBuilderSimulation() {
           textAlign: "center",
         }}
       >
-        <div style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "3px", opacity: 0.6, marginBottom: "6px" }}>
+        <div style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "3px", opacity: 0.65, marginBottom: "6px" }}>
           So sánh Quản trị công · Trò chơi Mô phỏng
         </div>
-        <h1 style={{ fontFamily: "'Noto Serif', Georgia, serif", fontSize: "24px", fontWeight: 700, margin: "0 0 4px" }}>
-          🏛️ NATION BUILDER
-        </h1>
-        <div style={{ fontSize: "13px", opacity: 0.75 }}>Thiết kế Quốc gia — Xây dựng Bộ máy Nhà nước</div>
+        <h1 style={{ fontFamily: "'Noto Serif', Georgia, serif", fontSize: "25px", fontWeight: 800, margin: "0 0 4px" }}>🏛️ NATIONAL BUILDER</h1>
+        <div style={{ fontSize: "13px", opacity: 0.78 }}>Thiết kế Quốc gia — Xây dựng Bộ máy Nhà nước</div>
       </div>
 
-      {/* Phase Navigation */}
       <div style={{ background: "#fff", padding: "12px 16px", borderBottom: "1px solid #e0e0e0", overflowX: "auto" }}>
         <div style={{ display: "flex", gap: "4px", minWidth: "fit-content" }}>
-          {PHASES.map((p, i) => {
-            const isActive = i === currentPhase;
+          {PHASES.map((item, index) => {
+            const isActive = index === currentPhase;
             const isDone =
-              i === 0
+              item.id === "identity"
                 ? nationName.trim().length > 0
-                : i === 6
+                : item.id === "review"
                   ? false
-                  : !!choices[p.id];
+                  : !!choices[item.id];
             return (
               <div
-                key={p.id}
-                onClick={() => setCurrentPhase(i)}
+                key={item.id}
+                onClick={() => setCurrentPhase(index)}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "8px",
                   fontSize: "12px",
-                  fontWeight: isActive ? 700 : 500,
+                  fontWeight: isActive ? 800 : 600,
                   background: isActive ? "#1a5276" : isDone ? "#e8f8f5" : "transparent",
                   color: isActive ? "#fff" : isDone ? "#0e6251" : "#888",
                   cursor: "pointer",
@@ -636,8 +998,8 @@ export default function NationBuilderSimulation() {
                   gap: "4px",
                 }}
               >
-                <span>{p.icon}</span>
-                <span>{p.label}</span>
+                <span>{item.icon}</span>
+                <span>{item.label}</span>
                 {isDone && !isActive && <span>✓</span>}
               </div>
             );
@@ -645,10 +1007,18 @@ export default function NationBuilderSimulation() {
         </div>
       </div>
 
-      {/* Main Content */}
       <div style={{ padding: "20px 16px 100px" }}>
         {isReview ? (
-          <ReviewPanel choices={choices} nationName={nationName} justifications={justifications} />
+          <ReviewPanel
+            choices={choices}
+            nationName={nationName}
+            justifications={justifications}
+            selectedScenario={selectedScenario}
+            setSelectedScenario={setSelectedScenario}
+            scenarioResponses={scenarioResponses}
+            setScenarioResponses={setScenarioResponses}
+            indicators={indicators}
+          />
         ) : (
           <PhaseContent
             phase={phase.id}
@@ -658,11 +1028,11 @@ export default function NationBuilderSimulation() {
             setNationName={setNationName}
             justifications={justifications}
             setJustifications={setJustifications}
+            indicators={indicators}
           />
         )}
       </div>
 
-      {/* Bottom Navigation */}
       <div
         style={{
           position: "fixed",
@@ -676,38 +1046,52 @@ export default function NationBuilderSimulation() {
           justifyContent: "space-between",
           alignItems: "center",
           zIndex: 100,
+          gap: "10px",
         }}
       >
         <button
           onClick={() => setCurrentPhase(Math.max(0, currentPhase - 1))}
           disabled={currentPhase === 0}
           style={{
-            padding: "10px 20px",
+            padding: "10px 18px",
             borderRadius: "8px",
             border: "1px solid #d5dbdb",
             background: currentPhase === 0 ? "#f0f0f0" : "#fff",
             color: currentPhase === 0 ? "#bbb" : "#333",
             fontSize: "14px",
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: currentPhase === 0 ? "not-allowed" : "pointer",
           }}
         >
           ← Quay lại
         </button>
-        <div style={{ fontSize: "13px", color: "#888" }}>
-          {currentPhase + 1} / {PHASES.length}
-        </div>
+        <button
+          onClick={resetGame}
+          style={{
+            padding: "10px 12px",
+            borderRadius: "8px",
+            border: "1px solid #f5b7b1",
+            background: "#fdedec",
+            color: "#922b21",
+            fontSize: "13px",
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          Làm lại
+        </button>
+        <div style={{ fontSize: "13px", color: "#888", whiteSpace: "nowrap" }}>{currentPhase + 1} / {PHASES.length}</div>
         <button
           onClick={() => setCurrentPhase(Math.min(PHASES.length - 1, currentPhase + 1))}
           disabled={currentPhase === PHASES.length - 1}
           style={{
-            padding: "10px 20px",
+            padding: "10px 18px",
             borderRadius: "8px",
             border: "none",
             background: currentPhase === PHASES.length - 1 ? "#d5dbdb" : "linear-gradient(135deg, #1a5276, #2e86c1)",
             color: "#fff",
             fontSize: "14px",
-            fontWeight: 600,
+            fontWeight: 700,
             cursor: currentPhase === PHASES.length - 1 ? "not-allowed" : "pointer",
           }}
         >
