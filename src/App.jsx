@@ -245,28 +245,18 @@ const OPTIONS = {
 const SCORING = {
   completion: {
     label: "Hoàn thành thiết kế",
-    max: 15,
+    max: 20,
     desc: "Đặt tên quốc gia và hoàn thành đầy đủ 5 lựa chọn thiết chế.",
   },
   consistency: {
     label: "Tính nhất quán",
-    max: 25,
-    desc: "Các lựa chọn có logic và phù hợp với nhau.",
-  },
-  justification: {
-    label: "Lập luận",
-    max: 25,
-    desc: "Giải thích hợp lý, có cơ sở lý thuyết hoặc kinh nghiệm quốc tế.",
-  },
-  scenario: {
-    label: "Xử lý tình huống",
-    max: 25,
-    desc: "Vận dụng mô hình để giải quyết vấn đề thực tế.",
+    max: 40,
+    desc: "Các lựa chọn có logic, tương thích và phù hợp với nhau.",
   },
   reflection: {
     label: "Phản biện mô hình",
-    max: 10,
-    desc: "Nhận diện điểm mạnh, rủi ro và hướng cải cách.",
+    max: 40,
+    desc: "Nhận diện điểm mạnh, rủi ro và các đánh đổi thể chế của mô hình.",
   },
 };
 
@@ -280,15 +270,6 @@ function getOption(key, id) {
 
 function getLabel(key, id) {
   return getOption(key, id)?.label || "Chưa chọn";
-}
-
-function getTextStrength(text = "") {
-  const length = text.trim().length;
-  if (length >= 220) return 1;
-  if (length >= 120) return 0.8;
-  if (length >= 60) return 0.55;
-  if (length >= 20) return 0.3;
-  return 0;
 }
 
 function getScenarioInsight(scenarioId, choices) {
@@ -398,39 +379,59 @@ function calculateIndicators(choices) {
   return result;
 }
 
-function calculateScore({ choices, nationName, justifications, selectedScenario, scenarioResponses }) {
+function calculateScore({ choices, nationName, indicators }) {
   const consistency = checkConsistency(choices);
   const completedChoices = DESIGN_PHASES.filter((phase) => choices[phase]).length;
-  const completionScore = Math.round((nationName.trim() ? 5 : 0) + (completedChoices / DESIGN_PHASES.length) * 10);
+  const completionRatio = completedChoices / DESIGN_PHASES.length;
 
-  const consistencyRaw = 18 + consistency.good.length * 2 - consistency.warnings.length * 2 - consistency.issues.length * 6;
-  const consistencyScore = completedChoices < DESIGN_PHASES.length ? Math.round((completedChoices / DESIGN_PHASES.length) * 15) : clamp(consistencyRaw, 0, SCORING.consistency.max);
+  // 1) Hoàn thành thiết kế: 20 điểm
+  // - 5 điểm nếu có tên quốc gia
+  // - 15 điểm nếu hoàn thành đầy đủ các lựa chọn thiết chế
+  const completionScore = clamp(
+    Math.round((nationName.trim() ? 5 : 0) + completionRatio * 15),
+    0,
+    SCORING.completion.max
+  );
 
-  const justificationStrength = DESIGN_PHASES.reduce((sum, phase) => sum + getTextStrength(justifications[phase]), 0) / DESIGN_PHASES.length;
-  const justificationScore = Math.round(justificationStrength * SCORING.justification.max);
+  // 2) Tính nhất quán: 40 điểm
+  // - Điểm nền: 28
+  // - Mỗi điểm nhất quán: +4
+  // - Mỗi cảnh báo: -4
+  // - Mỗi mâu thuẫn nghiêm trọng: -10
+  // Nếu chưa hoàn thành thiết kế, điểm nhất quán được tạm tính theo tiến độ.
+  const consistencyRaw = 28 + consistency.good.length * 4 - consistency.warnings.length * 4 - consistency.issues.length * 10;
+  const consistencyScore = completedChoices < DESIGN_PHASES.length
+    ? Math.round(completionRatio * 24)
+    : clamp(consistencyRaw, 0, SCORING.consistency.max);
 
-  const scenarioText = selectedScenario ? scenarioResponses[selectedScenario] || "" : "";
-  const scenarioStrength = getTextStrength(scenarioText);
-  const scenarioScore = Math.round(scenarioStrength * SCORING.scenario.max);
-
+  // 3) Phản biện mô hình: 40 điểm
+  // Phần này không chấm độ dài lập luận hay xử lý tình huống.
+  // Điểm được tính từ khả năng mô hình tạo ra một hồ sơ có thể phân tích:
+  // - hoàn thành thiết kế để có đủ dữ liệu phản biện;
+  // - có điểm mạnh nhất quán để bảo vệ mô hình;
+  // - có cảnh báo/rủi ro để chất vấn mô hình;
+  // - có đánh đổi rõ giữa các chỉ số vận hành.
+  const indicatorValues = indicators ? Object.values(indicators) : [];
+  const indicatorSpread = indicatorValues.length ? Math.max(...indicatorValues) - Math.min(...indicatorValues) : 0;
+  const tradeoffScore = clamp(Math.round((indicatorSpread / 35) * 10), 0, 10);
   const reflectionScore = clamp(
     Math.round(
-      Math.min(consistency.good.length, 3) * 1.5 +
-        Math.min(consistency.warnings.length + consistency.issues.length, 3) * 1.5 +
-        justificationStrength * 4
+      completionRatio * 10 +
+        Math.min(consistency.good.length, 3) * 4 +
+        Math.min(consistency.warnings.length + consistency.issues.length, 3) * 4 +
+        tradeoffScore +
+        (consistency.issues.length === 0 ? 6 : 0)
     ),
     0,
     SCORING.reflection.max
   );
 
-  const total = completionScore + consistencyScore + justificationScore + scenarioScore + reflectionScore;
+  const total = completionScore + consistencyScore + reflectionScore;
 
   return {
     total,
     completion: completionScore,
     consistency: consistencyScore,
-    justification: justificationScore,
-    scenario: scenarioScore,
     reflection: reflectionScore,
   };
 }
@@ -469,7 +470,7 @@ function generateReport({ nationName, choices, justifications, indicators, score
     ...consistency.issues.map((item) => `- Vấn đề cần sửa: ${item}`),
   ].join("\n") || "- Chưa có phản hồi vì thiết kế chưa đủ dữ liệu.";
 
-  return `BÁO CÁO THIẾT KẾ QUỐC GIA - NATIONAL BUILDER\n\n1. Tên quốc gia\n${nationName || "Chưa đặt tên"}\n\n2. Hồ sơ thiết chế\n${modelLines}\n\n3. Chỉ số vận hành\n${indicatorLines}\n\nNhận xét tổng hợp: ${getIndicatorComment(indicators)}\n\n4. Điểm tự động\n- Tổng điểm: ${score.total}/100\n- Hoàn thành thiết kế: ${score.completion}/${SCORING.completion.max}\n- Tính nhất quán: ${score.consistency}/${SCORING.consistency.max}\n- Lập luận: ${score.justification}/${SCORING.justification.max}\n- Xử lý tình huống: ${score.scenario}/${SCORING.scenario.max}\n- Phản biện mô hình: ${score.reflection}/${SCORING.reflection.max}\n\n5. Giải thích lựa chọn của nhóm\n${justificationLines}\n\n6. Kiểm tra tính nhất quán\n${feedbackLines}\n\n7. Tình huống kiểm tra\n${selectedScenarioObj ? `${selectedScenarioObj.icon} ${selectedScenarioObj.title}: ${selectedScenarioObj.description}` : "Chưa chọn tình huống."}\n\nPhân tích của nhóm:\n${selectedScenario ? scenarioResponses[selectedScenario]?.trim() || "Chưa có phân tích tình huống." : "Chưa có phân tích tình huống."}\n\nGợi ý phản biện:\n${selectedScenario ? getScenarioInsight(selectedScenario, choices) : "Hãy chọn một tình huống để kiểm tra khả năng vận hành của mô hình."}`;
+  return `BÁO CÁO THIẾT KẾ QUỐC GIA - NATIONAL BUILDER\n\n1. Tên quốc gia\n${nationName || "Chưa đặt tên"}\n\n2. Hồ sơ thiết chế\n${modelLines}\n\n3. Chỉ số vận hành\n${indicatorLines}\n\nNhận xét tổng hợp: ${getIndicatorComment(indicators)}\n\n4. Điểm tự động\n- Tổng điểm: ${score.total}/100\n- Hoàn thành thiết kế: ${score.completion}/${SCORING.completion.max}\n- Tính nhất quán: ${score.consistency}/${SCORING.consistency.max}\n- Phản biện mô hình: ${score.reflection}/${SCORING.reflection.max}\n\n5. Giải thích lựa chọn của nhóm\n${justificationLines}\n\n6. Kiểm tra tính nhất quán\n${feedbackLines}\n\n7. Tình huống kiểm tra\n${selectedScenarioObj ? `${selectedScenarioObj.icon} ${selectedScenarioObj.title}: ${selectedScenarioObj.description}` : "Chưa chọn tình huống."}\n\nPhân tích của nhóm:\n${selectedScenario ? scenarioResponses[selectedScenario]?.trim() || "Chưa có phân tích tình huống." : "Chưa có phân tích tình huống."}\n\nGợi ý phản biện:\n${selectedScenario ? getScenarioInsight(selectedScenario, choices) : "Hãy chọn một tình huống để kiểm tra khả năng vận hành của mô hình."}`;
 }
 
 
@@ -491,11 +492,8 @@ function getTeachingFocus({ score, consistency, indicators, choices }) {
   if (consistency.warnings.length > 0) {
     focus.push("Khai thác các cảnh báo như tình huống 'thiết kế có thể vận hành được nhưng cần điều kiện bổ sung'.");
   }
-  if (score.justification < 15) {
-    focus.push("Yêu cầu nhóm bổ sung lập luận lý thuyết, ví dụ quốc gia so sánh và đánh đổi chính sách.");
-  }
-  if (score.scenario < 15) {
-    focus.push("Yêu cầu nhóm làm rõ quy trình ra quyết định trong khủng hoảng: ai có thẩm quyền, ai giám sát, địa phương tham gia thế nào.");
+  if (score.reflection < 24) {
+    focus.push("Yêu cầu nhóm làm rõ điểm mạnh, rủi ro và các đánh đổi thể chế của mô hình.");
   }
   if (choices.central_local === "centralized") {
     focus.push("Dùng thiết kế này để thảo luận đánh đổi giữa điều phối thống nhất và tính chủ động của địa phương.");
@@ -797,10 +795,9 @@ function PhaseContent({ phase, choices, setChoices, nationName, setNationName, j
 
 function ReviewPanel({ choices, nationName, justifications, selectedScenario, setSelectedScenario, scenarioResponses, setScenarioResponses, indicators }) {
   const consistency = checkConsistency(choices);
-  const score = calculateScore({ choices, nationName, justifications, selectedScenario, scenarioResponses });
+  const score = calculateScore({ choices, nationName, indicators });
   const level = getPerformanceLevel(score.total);
   const completed = DESIGN_PHASES.filter((phase) => choices[phase]).length;
-  const hasJustifications = DESIGN_PHASES.filter((phase) => getTextStrength(justifications[phase]) >= 0.3).length;
   const reportText = generateReport({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses });
   const instructorBriefText = generateInstructorBrief({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses });
   const sharePayload = generateSharePayload({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses });
@@ -880,7 +877,7 @@ function ReviewPanel({ choices, nationName, justifications, selectedScenario, se
           </div>
         ))}
         <div style={{ marginTop: "12px", fontSize: "13px", color: "#666", lineHeight: 1.6 }}>
-          <strong>Tiến độ:</strong> {completed}/5 lựa chọn · {hasJustifications}/5 giải thích · {selectedScenario ? "đã chọn tình huống" : "chưa chọn tình huống"}
+          <strong>Tiến độ:</strong> {completed}/5 lựa chọn · {selectedScenario ? "đã chọn tình huống" : "chưa chọn tình huống"}
         </div>
       </div>
 
@@ -1169,7 +1166,7 @@ export default function NationBuilderSimulation() {
         }}
       >
         <div style={{ fontSize: "11px", textTransform: "uppercase", letterSpacing: "3px", opacity: 0.65, marginBottom: "6px" }}>
-          So sánh Quản trị công · Trò chơi Mô phỏng
+          Quản trị toàn cầu · Trò chơi Mô phỏng
         </div>
         <h1 style={{ fontFamily: "'Noto Serif', Georgia, serif", fontSize: "25px", fontWeight: 800, margin: "0 0 4px" }}>🏛️ NATIONAL BUILDER</h1>
         <div style={{ fontSize: "13px", opacity: 0.78 }}>Thiết kế Quốc gia — Xây dựng Bộ máy Nhà nước</div>
