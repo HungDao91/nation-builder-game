@@ -472,6 +472,111 @@ function generateReport({ nationName, choices, justifications, indicators, score
   return `BÁO CÁO THIẾT KẾ QUỐC GIA - NATIONAL BUILDER\n\n1. Tên quốc gia\n${nationName || "Chưa đặt tên"}\n\n2. Hồ sơ thiết chế\n${modelLines}\n\n3. Chỉ số vận hành\n${indicatorLines}\n\nNhận xét tổng hợp: ${getIndicatorComment(indicators)}\n\n4. Điểm tự động\n- Tổng điểm: ${score.total}/100\n- Hoàn thành thiết kế: ${score.completion}/${SCORING.completion.max}\n- Tính nhất quán: ${score.consistency}/${SCORING.consistency.max}\n- Lập luận: ${score.justification}/${SCORING.justification.max}\n- Xử lý tình huống: ${score.scenario}/${SCORING.scenario.max}\n- Phản biện mô hình: ${score.reflection}/${SCORING.reflection.max}\n\n5. Giải thích lựa chọn của nhóm\n${justificationLines}\n\n6. Kiểm tra tính nhất quán\n${feedbackLines}\n\n7. Tình huống kiểm tra\n${selectedScenarioObj ? `${selectedScenarioObj.icon} ${selectedScenarioObj.title}: ${selectedScenarioObj.description}` : "Chưa chọn tình huống."}\n\nPhân tích của nhóm:\n${selectedScenario ? scenarioResponses[selectedScenario]?.trim() || "Chưa có phân tích tình huống." : "Chưa có phân tích tình huống."}\n\nGợi ý phản biện:\n${selectedScenario ? getScenarioInsight(selectedScenario, choices) : "Hãy chọn một tình huống để kiểm tra khả năng vận hành của mô hình."}`;
 }
 
+
+function getIndicatorExtremes(indicators, count = 3) {
+  const entries = Object.entries(indicators).sort((a, b) => b[1] - a[1]);
+  return {
+    strengths: entries.slice(0, count),
+    risks: entries.slice(-count).reverse(),
+  };
+}
+
+function getTeachingFocus({ score, consistency, indicators, choices }) {
+  const focus = [];
+  const { strengths, risks } = getIndicatorExtremes(indicators, 2);
+
+  if (consistency.issues.length > 0) {
+    focus.push("Tập trung thảo luận về các điểm mâu thuẫn thể chế: sinh viên cần bảo vệ hoặc điều chỉnh thiết kế của mình.");
+  }
+  if (consistency.warnings.length > 0) {
+    focus.push("Khai thác các cảnh báo như tình huống 'thiết kế có thể vận hành được nhưng cần điều kiện bổ sung'.");
+  }
+  if (score.justification < 15) {
+    focus.push("Yêu cầu nhóm bổ sung lập luận lý thuyết, ví dụ quốc gia so sánh và đánh đổi chính sách.");
+  }
+  if (score.scenario < 15) {
+    focus.push("Yêu cầu nhóm làm rõ quy trình ra quyết định trong khủng hoảng: ai có thẩm quyền, ai giám sát, địa phương tham gia thế nào.");
+  }
+  if (choices.central_local === "centralized") {
+    focus.push("Dùng thiết kế này để thảo luận đánh đổi giữa điều phối thống nhất và tính chủ động của địa phương.");
+  }
+  if (choices.central_local === "decentralized") {
+    focus.push("Dùng thiết kế này để thảo luận đánh đổi giữa tự chủ địa phương, bất bình đẳng vùng và năng lực kiểm soát của trung ương.");
+  }
+  if (choices.structure === "federal" || choices.legislature === "bicameral") {
+    focus.push("Có thể đặt câu hỏi về vai trò đại diện lãnh thổ và cơ chế kiểm soát chéo trong mô hình lưỡng viện/liên bang.");
+  }
+
+  focus.push(`Mạnh nhất về ${strengths.map(([key]) => INDICATORS[key].fullLabel.toLowerCase()).join(" và ")}; yếu/rủi ro nhất ở ${risks.map(([key]) => INDICATORS[key].fullLabel.toLowerCase()).join(" và ")}.`);
+
+  return [...new Set(focus)].slice(0, 6);
+}
+
+function generateSharePayload({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses }) {
+  return {
+    app: "National Builder",
+    version: "teacher-share-v1",
+    exportedAt: new Date().toISOString(),
+    nationName: nationName || "Chưa đặt tên",
+    choices,
+    choiceLabels: DESIGN_PHASES.reduce((acc, phase) => ({ ...acc, [phase]: getLabel(phase, choices[phase]) }), {}),
+    justifications,
+    indicators,
+    score,
+    consistency,
+    selectedScenario,
+    selectedScenarioTitle: SCENARIOS.find((s) => s.id === selectedScenario)?.title || "Chưa chọn tình huống",
+    scenarioResponse: selectedScenario ? scenarioResponses[selectedScenario] || "" : "",
+  };
+}
+
+function generateInstructorBrief({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses }) {
+  const selectedScenarioObj = SCENARIOS.find((s) => s.id === selectedScenario);
+  const level = getPerformanceLevel(score.total);
+  const { strengths, risks } = getIndicatorExtremes(indicators, 3);
+  const teachingFocus = getTeachingFocus({ score, consistency, indicators, choices });
+
+  const modelLines = DESIGN_PHASES
+    .map((phase) => `- ${getPhaseShortLabel(phase)}: ${getLabel(phase, choices[phase])}`)
+    .join("\n");
+
+  const strengthLines = strengths
+    .map(([key, value]) => `- ${INDICATORS[key].fullLabel}: ${value}/100`)
+    .join("\n");
+
+  const riskLines = risks
+    .map(([key, value]) => `- ${INDICATORS[key].fullLabel}: ${value}/100`)
+    .join("\n");
+
+  const consistencyLines = [
+    ...consistency.good.map((item) => `- Điểm mạnh: ${item}`),
+    ...consistency.warnings.map((item) => `- Cảnh báo: ${item}`),
+    ...consistency.issues.map((item) => `- Vấn đề cần chất vấn: ${item}`),
+  ].join("\n") || "- Chưa có đủ dữ liệu để đánh giá tính nhất quán.";
+
+  const discussionQuestions = [
+    "Mô hình này đang ưu tiên giá trị nào: hiệu quả, ổn định, dân chủ, tự chủ địa phương hay công bằng dịch vụ công?",
+    "Đâu là đánh đổi lớn nhất của thiết kế này, và nhóm có chấp nhận đánh đổi đó không?",
+    "Nếu áp dụng vào Việt Nam hoặc một quốc gia đang phát triển, điều kiện tiên quyết để mô hình vận hành là gì?",
+    "Trong khủng hoảng, cơ quan nào ra quyết định cuối cùng và cơ quan nào kiểm soát quyền lực?",
+    "Thiết kế này giống quốc gia nào trên thế giới, và khác ở điểm nào?",
+  ];
+
+  return `PHIẾU PHÂN TÍCH CHO GIẢNG VIÊN - NATIONAL BUILDER\n\n1. Thông tin nhóm/quốc gia\n- Tên quốc gia: ${nationName || "Chưa đặt tên"}\n- Tổng điểm tự động: ${score.total}/100 (${level.label})\n- Tình huống đã kiểm tra: ${selectedScenarioObj ? selectedScenarioObj.title : "Chưa chọn"}\n\n2. Thiết kế thể chế của nhóm\n${modelLines}\n\n3. Điểm mạnh vận hành nổi bật\n${strengthLines}\n\n4. Rủi ro/yếu điểm cần thảo luận\n${riskLines}\n\n5. Kiểm tra tính nhất quán để giảng viên chất vấn\n${consistencyLines}\n\n6. Gợi ý trọng tâm thảo luận trước lớp\n${teachingFocus.map((item, index) => `${index + 1}. ${item}`).join("\n")}\n\n7. Câu hỏi gợi mở cho giảng viên\n${discussionQuestions.map((item, index) => `${index + 1}. ${item}`).join("\n")}\n\n8. Phần xử lý tình huống của sinh viên\n${selectedScenarioObj ? `${selectedScenarioObj.title}: ${selectedScenarioObj.description}` : "Chưa chọn tình huống."}\n\nPhân tích của nhóm:\n${selectedScenario ? scenarioResponses[selectedScenario]?.trim() || "Chưa có phân tích tình huống." : "Chưa có phân tích tình huống."}\n\nGợi ý phản biện nhanh:\n${selectedScenario ? getScenarioInsight(selectedScenario, choices) : "Hãy yêu cầu nhóm chọn một tình huống để kiểm tra khả năng vận hành của mô hình."}\n\n9. Ghi chú nhanh cho giảng viên\n- Có thể yêu cầu nhóm trình bày trong 3 phút: mục tiêu thiết kế, lựa chọn quan trọng nhất, điểm yếu lớn nhất.\n- Sau đó cho nhóm khác phản biện trong 2 phút bằng cách tập trung vào một chỉ số thấp nhất hoặc một cảnh báo nhất quán.\n- Nếu dùng nhiều nhóm, hãy so sánh các nhóm theo cùng một tình huống để thấy mô hình nào xử lý khủng hoảng tốt hơn.`;
+}
+
+function downloadTextFile(filename, text) {
+  const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 function getPhaseShortLabel(key) {
   const labels = {
     structure: "Cấu trúc nhà nước",
@@ -697,15 +802,22 @@ function ReviewPanel({ choices, nationName, justifications, selectedScenario, se
   const completed = DESIGN_PHASES.filter((phase) => choices[phase]).length;
   const hasJustifications = DESIGN_PHASES.filter((phase) => getTextStrength(justifications[phase]) >= 0.3).length;
   const reportText = generateReport({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses });
+  const instructorBriefText = generateInstructorBrief({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses });
+  const sharePayload = generateSharePayload({ nationName, choices, justifications, indicators, score, consistency, selectedScenario, scenarioResponses });
+  const safeNationName = (nationName || "national-builder").trim().replace(/[^a-zA-Z0-9-_]+/g, "-").slice(0, 40) || "national-builder";
 
-  const copyReport = async () => {
+  const copyText = async (text, successMessage) => {
     try {
-      await navigator.clipboard.writeText(reportText);
-      alert("Đã copy báo cáo vào clipboard.");
+      await navigator.clipboard.writeText(text);
+      alert(successMessage);
     } catch (error) {
-      alert("Không thể copy tự động. Bạn có thể bôi đen phần báo cáo và copy thủ công.");
+      alert("Không thể copy tự động. Bạn có thể bôi đen phần nội dung và copy thủ công.");
     }
   };
+
+  const copyReport = () => copyText(reportText, "Đã copy báo cáo sinh viên vào clipboard.");
+  const copyInstructorBrief = () => copyText(instructorBriefText, "Đã copy phiếu phân tích cho giảng viên vào clipboard.");
+  const copyShareData = () => copyText(JSON.stringify(sharePayload, null, 2), "Đã copy dữ liệu chia sẻ dạng JSON vào clipboard.");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
@@ -839,6 +951,100 @@ function ReviewPanel({ choices, nationName, justifications, selectedScenario, se
             })()}
           </div>
         )}
+      </div>
+
+      <div style={{ background: "#fff", borderRadius: "12px", padding: "18px", border: "1px solid #d6eaf8" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", marginBottom: "12px", flexWrap: "wrap" }}>
+          <div>
+            <h4 style={{ fontFamily: "'Noto Serif', Georgia, serif", color: "#1a5276", margin: "0 0 4px", fontSize: "16px" }}>👩‍🏫 Phiếu phân tích cho giảng viên</h4>
+            <div style={{ fontSize: "12px", color: "#666", lineHeight: 1.5 }}>
+              Nội dung này dùng để sinh viên gửi cho giảng viên, hoặc để chiếu trước lớp và thảo luận nhanh.
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+            <button
+              onClick={copyInstructorBrief}
+              style={{
+                border: "none",
+                borderRadius: "8px",
+                background: "linear-gradient(135deg, #1a5276, #2e86c1)",
+                color: "#fff",
+                padding: "8px 12px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Copy cho giảng viên
+            </button>
+            <button
+              onClick={() => downloadTextFile(`${safeNationName}-teacher-brief.txt`, instructorBriefText)}
+              style={{
+                border: "1px solid #1a5276",
+                borderRadius: "8px",
+                background: "#fff",
+                color: "#1a5276",
+                padding: "8px 12px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Tải .txt
+            </button>
+            <button
+              onClick={copyShareData}
+              style={{
+                border: "1px solid #7d6608",
+                borderRadius: "8px",
+                background: "#fef9e7",
+                color: "#7d6608",
+                padding: "8px 12px",
+                fontSize: "13px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              Copy dữ liệu JSON
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "10px", marginBottom: "12px" }}>
+          <div style={{ background: "#eaf2f8", borderRadius: "10px", padding: "10px" }}>
+            <div style={{ fontSize: "11px", color: "#1a5276", textTransform: "uppercase", fontWeight: 800 }}>Điểm lớp</div>
+            <div style={{ fontSize: "22px", color: "#1a5276", fontWeight: 900 }}>{score.total}/100</div>
+          </div>
+          <div style={{ background: "#e8f8f5", borderRadius: "10px", padding: "10px" }}>
+            <div style={{ fontSize: "11px", color: "#0e6251", textTransform: "uppercase", fontWeight: 800 }}>Mạnh nhất</div>
+            <div style={{ fontSize: "13px", color: "#0e6251", fontWeight: 800 }}>{INDICATORS[getIndicatorExtremes(indicators, 1).strengths[0][0]].label}</div>
+            <div style={{ fontSize: "12px", color: "#0e6251" }}>{getIndicatorExtremes(indicators, 1).strengths[0][1]}/100</div>
+          </div>
+          <div style={{ background: "#fdedec", borderRadius: "10px", padding: "10px" }}>
+            <div style={{ fontSize: "11px", color: "#922b21", textTransform: "uppercase", fontWeight: 800 }}>Cần chất vấn</div>
+            <div style={{ fontSize: "13px", color: "#922b21", fontWeight: 800 }}>{INDICATORS[getIndicatorExtremes(indicators, 1).risks[0][0]].label}</div>
+            <div style={{ fontSize: "12px", color: "#922b21" }}>{getIndicatorExtremes(indicators, 1).risks[0][1]}/100</div>
+          </div>
+        </div>
+
+        <textarea
+          readOnly
+          value={instructorBriefText}
+          style={{
+            width: "100%",
+            minHeight: "420px",
+            padding: "14px",
+            border: "1px solid #d5dbdb",
+            borderRadius: "10px",
+            fontSize: "13px",
+            fontFamily: "'Consolas', 'Courier New', monospace",
+            resize: "vertical",
+            boxSizing: "border-box",
+            lineHeight: 1.5,
+            background: "#f8fbfd",
+            color: "#333",
+          }}
+        />
       </div>
 
       <div style={{ background: "#fff", borderRadius: "12px", padding: "18px", border: "1px solid #e0e0e0" }}>
