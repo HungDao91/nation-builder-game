@@ -1306,7 +1306,7 @@ export default function NationBuilderSimulation() {
         </div>
         <h1 style={{ fontFamily: "'Noto Serif', Georgia, serif", fontSize: "25px", fontWeight: 800, margin: "0 0 4px" }}>🏛️ NATIONAL BUILDER</h1>
         <div style={{ fontSize: "13px", opacity: 0.78 }}>Thiết kế Quốc gia — Xây dựng Bộ máy Nhà nước</div>
-        <div style={{ fontSize: "13px", opacity: 0.78 }}>Tác giả: TS. Đào Hưng</div>
+        <div style={{ fontSize: "13px", opacity: 0.78 }}>Tác giả: TS. Đào Hưng / Version 1.0</div>
       </div>
 
       <div style={{ background: "#fff", padding: "12px 16px", borderBottom: "1px solid #e0e0e0", overflowX: "auto" }}>
